@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sanjeev Provision Store</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rozha+One&family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ================= Opening Portal ================= -->
+<div class="portal" id="portal">
+  <div class="portal-inner" id="portalChoices">
+    <div class="portal-brand">SP</div>
+    <span class="eyebrow">Sanjeev Provision Store</span>
+    <h1>Welcome — how are you entering?</h1>
+    <p class="lead">Choose how you'd like to continue. Customers can browse the store and place an order; the store owner can manage products and view orders.</p>
+    <div class="portal-choices">
+      <div class="portal-choice">
+        <div class="p-icon">🧺</div>
+        <h3>I'm a Customer</h3>
+        <p>Browse groceries, fill your basket and place an order for delivery.</p>
+        <button class="btn btn-primary" id="enterCustomer">Enter Store</button>
+      </div>
+      <div class="portal-choice">
+        <div class="p-icon">🔑</div>
+        <h3>Store Owner</h3>
+        <p>Manage products &amp; prices, and view the orders customers have placed.</p>
+        <button class="btn btn-primary" id="enterAdmin">Admin Login</button>
+      </div>
+    </div>
+    <p class="portal-note">Customers can reopen this screen anytime from the link in the footer.</p>
+  </div>
+
+  <div class="portal-inner portal-login" id="portalLogin" style="display:none;">
+    <div class="p-lock">🔒</div>
+    <h3>Owner Access</h3>
+    <p class="muted">Enter the store password to open the admin dashboard.</p>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="adminPass" placeholder="Enter password" autocomplete="off">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" id="adminLoginBtn" style="width:100%;">Enter Dashboard</button>
+    <div><button class="portal-back" id="backToChoices">← Back</button></div>
+  </div>
+</div>
+
+<header>
+  <div class="wrap nav">
+    <a href="#top" class="brand">
+      <div class="brand-mark">SP</div>
+      <div class="brand-text">
+        <span class="name">Sanjeev</span>
+        <span class="sub">Provision Store</span>
+      </div>
+    </a>
+    <nav class="nav-links">
+      <a href="#shop">Shop</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="nav-right">
+      <button class="cart-btn" id="openCartBtn" aria-label="Open cart">
+        🧺 Cart
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Your neighbourhood kirana, online</span>
+        <h1>Daily groceries, <em>stocked fresh</em>, delivered to your door.</h1>
+        <p class="lead">From atta and dal to masala and soap — everything your kitchen needs, at the same honest prices as our counter. Pick your items, we'll pack and send them out.</p>
+        <div class="hero-ctas">
+          <a href="#shop" class="btn btn-primary">Start Shopping</a>
+          <a href="#about" class="btn btn-ghost">Why shop with us →</a>
+        </div>
+        <div class="hero-strip">
+          <div><strong>7 AM – 10 PM</strong>Open all seven days</div>
+          <div><strong>₹499+</strong>Free delivery above</div>
+          <div><strong>UPI · Card · COD</strong>Pay your way</div>
+        </div>
+      </div>
+
+      <div class="hero-card stitched">
+        <div class="hero-card-top">
+          <svg class="hero-basket" viewBox="0 0 64 64" fill="none">
+            <path d="M10 24H54L49 54H15L10 24Z" stroke="#1F4D3D" stroke-width="2.5" fill="#E4A233" fill-opacity="0.15"/>
+            <path d="M20 24C20 15 25 9 32 9C39 9 44 15 44 24" stroke="#1F4D3D" stroke-width="2.5"/>
+            <path d="M17 32H47" stroke="#A6402D" stroke-width="2" stroke-dasharray="3 3"/>
+            <path d="M19 40H45" stroke="#A6402D" stroke-width="2" stroke-dasharray="3 3"/>
+          </svg>
+          <span class="hero-tag">Today's stamp</span>
+        </div>
+        <h3>Kitchen Essentials Basket</h3>
+        <p>A quick pick of what most households refill every week — rice, dal, oil and masale, ready in one tap.</p>
+        <div class="price-tags">
+          <div class="price-chip">Rice 5kg <b>₹450</b></div>
+          <div class="price-chip">Toor Dal 1kg <b>₹165</b></div>
+          <div class="price-chip">Sunflower Oil 1L <b>₹140</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="shop">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <h2>Shop the store</h2>
+          <p>Everything below is in stock right now. Add what you need — quantities can be changed anytime before checkout.</p>
+        </div>
+      </div>
+
+      <div class="chips" id="chips"></div>
+      <div class="grid" id="productGrid"></div>
+    </div>
+  </section>
+
+  <section class="section" id="about">
+    <div class="wrap">
+      <div class="hero-card stitched" style="max-width:820px; margin:0 auto;">
+        <span class="hero-tag">Since the corner of your street</span>
+        <h3 style="margin-top:16px;">Why families choose Sanjeev Provision Store</h3>
+        <p style="margin-bottom:0;">We've weighed out dal, tea and atta for this neighbourhood for years — the same measuring scale, the same fair pricing, now just a tap away. No middlemen mark-ups, no stale stock, and if something's out, we'll tell you honestly instead of substituting it.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer id="contact">
+  <div class="wrap footer-grid">
+    <div>
+      <h3>Sanjeev Provision Store</h3>
+      <p>93, Sadar Bazar in front of police station, Jhansi</p>
+      <p>📞 +91 8707397039 </p>
+    </div>
+    <div>
+      <h3 style="font-size:16px;">Store Hours</h3>
+      <ul>
+        <li>Mon – Sun</li>
+        <li>7:00 AM – 10:00 PM</li>
+        <li>Open on all public holidays</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="font-size:16px;">Delivery</h3>
+      <ul>
+        <li>Free above ₹499</li>
+        <li>Flat ₹30 below ₹499</li>
+        <li>Usually out within the hour</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">© 2026 Sanjeev Provision Store. Weighed with care, every single day. · <a href="#" id="openPortalLink" style="color:var(--mustard); text-decoration:underline;">Store owner? Open admin portal</a></div>
+</footer>
+
+<!-- ================= Admin Dashboard ================= -->
+<div class="admin-view" id="adminView">
+  <div class="admin-top">
+    <div class="wrap">
+      <div class="brand">
+        <div class="brand-mark">SP</div>
+        <div class="brand-text">
+          <span class="name">Owner Dashboard</span>
+          <span class="sub">Sanjeev Provision Store</span>
+        </div>
+      </div>
+      <button class="logout-btn" id="logoutBtn">Log out</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="products">🛒 Products</button>
+      <button class="admin-tab" data-tab="orders">📦 Orders</button>
+    </div>
+
+    <div class="admin-panel active" id="panel-products">
+      <div class="admin-panel-head">
+        <h2>Products</h2>
+        <button class="btn btn-primary" id="addProductBtn">+ Add product</button>
+      </div>
+      <div id="adminProductList"></div>
+    </div>
+
+    <div class="admin-panel" id="panel-orders">
+      <div class="admin-panel-head">
+        <h2>Orders</h2>
+      </div>
+      <div class="admin-stats" id="orderStats"></div>
+      <div id="adminOrderList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin product editor modal -->
+<div class="modal-backdrop" id="admModalBackdrop">
+  <div class="modal">
+    <button class="icon-btn modal-close" id="admModalClose" aria-label="Close">✕</button>
+    <div id="admModalContent"></div>
+  </div>
+</div>
+
+<!-- Cart Drawer -->
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="cartDrawer" aria-label="Shopping cart">
+  <div class="drawer-head">
+    <h3>Your Basket</h3>
+    <button class="icon-btn" id="closeCartBtn" aria-label="Close cart">✕</button>
+  </div>
+  <div class="drawer-body" id="cartBody"></div>
+  <div class="drawer-foot" id="cartFoot">
+    <div class="row-line"><span>Subtotal</span><span id="subtotalVal">₹0</span></div>
+    <div class="row-line"><span>Delivery</span><span id="deliveryVal">₹0</span></div>
+    <div class="row-line total"><span>Total</span><b id="totalVal">₹0</b></div>
+    <button class="checkout-btn" id="checkoutBtn" disabled>Proceed to Checkout</button>
+  </div>
+</aside>
+
+<!-- Checkout / Order Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal">
+    <button class="icon-btn modal-close" id="closeModalBtn" aria-label="Close">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
