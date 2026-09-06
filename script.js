@@ -38,6 +38,9 @@ let isAdmin = false;
    devices would need a backend/server. */
 const LS_PRODUCTS = "sp_products_v1";
 const LS_ORDERS   = "sp_orders_v1";
+const LS_LISTS    = "sp_list_uploads_v1";
+const LS_SEEN_STATUS = "sp_seen_status_v1";
+const LS_NOTIFY_PREF = "sp_notify_pref_v1";
 
 function loadProducts(){
   try{
@@ -59,9 +62,32 @@ function loadOrders(){
 function saveOrders(){
   try{ localStorage.setItem(LS_ORDERS, JSON.stringify(orders)); }catch(e){}
 }
+function loadListUploads(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(LS_LISTS));
+    if(Array.isArray(saved)) return saved;
+  }catch(e){}
+  return [];
+}
+function saveListUploads(){
+  try{ localStorage.setItem(LS_LISTS, JSON.stringify(listUploads)); return true; }
+  catch(e){ return false; }
+}
+function loadSeenStatus(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(LS_SEEN_STATUS));
+    if(saved && typeof saved === 'object') return saved;
+  }catch(e){}
+  return {};
+}
+function saveSeenStatus(){
+  try{ localStorage.setItem(LS_SEEN_STATUS, JSON.stringify(seenStatus)); }catch(e){}
+}
 
 let products = loadProducts();
 let orders = loadOrders();
+let listUploads = loadListUploads();
+let seenStatus = loadSeenStatus(); // { orderId: lastStatusCustomerHasSeen }
 
 function findProduct(id){ return products.find(p => p.id === +id); }
 function getCategories(){ return ["All", ...new Set(products.map(p => p.cat))]; }
@@ -70,6 +96,7 @@ function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c=>({'&':'&am
 
 let cart = {};        // { productId: qty }
 let activeCategory = "All";
+let searchQuery = "";
 let selectedPayment = "UPI";
 
 /* Shop's real UPI details — used to build a genuine, dynamic-amount UPI QR / deep link.
@@ -92,6 +119,11 @@ function buildUpiLink(amount, orderId){
 /* ---------------- Rendering: chips + grid ---------------- */
 const chipsEl = document.getElementById('chips');
 const gridEl = document.getElementById('productGrid');
+const searchInput = document.getElementById('productSearch');
+searchInput.addEventListener('input', ()=>{
+  searchQuery = searchInput.value;
+  renderGrid();
+});
 
 function renderChips(){
   const cats = getCategories();
@@ -109,7 +141,15 @@ function renderChips(){
 }
 
 function renderGrid(){
-  const items = activeCategory === "All" ? products : products.filter(p=>p.cat===activeCategory);
+  let items = activeCategory === "All" ? products : products.filter(p=>p.cat===activeCategory);
+  const q = searchQuery.trim().toLowerCase();
+  if(q) items = items.filter(p => p.name.toLowerCase().includes(q));
+
+  if(!items.length){
+    gridEl.innerHTML = `<div class="no-results">🔎 No items match "${escapeHtml(searchQuery)}". Try a different search or browse a category.</div>`;
+    return;
+  }
+
   gridEl.innerHTML = items.map(p=>{
     const qty = cart[p.id] || 0;
     return `
@@ -160,6 +200,7 @@ const subtotalVal = document.getElementById('subtotalVal');
 const deliveryVal = document.getElementById('deliveryVal');
 const totalVal = document.getElementById('totalVal');
 const checkoutBtn = document.getElementById('checkoutBtn');
+const whatsappOrderBtn = document.getElementById('whatsappOrderBtn');
 
 function cartTotals(){
   let subtotal = 0, count = 0;
@@ -186,6 +227,7 @@ function renderCart(){
         <p>Your basket is empty.<br>Add a few items to get started.</p>
       </div>`;
     checkoutBtn.disabled = true;
+    whatsappOrderBtn.disabled = true;
   }else{
     cartBody.innerHTML = entries.map(([id, qty])=>{
       const p = findProduct(id);
@@ -205,6 +247,7 @@ function renderCart(){
       </div>`;
     }).join('');
     checkoutBtn.disabled = false;
+    whatsappOrderBtn.disabled = false;
 
     cartBody.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click', ()=>changeQty(+b.dataset.plus, 1)));
     cartBody.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click', ()=>changeQty(+b.dataset.minus, -1)));
@@ -227,15 +270,51 @@ backdrop.addEventListener('click', ()=>{ closeCart(); closeModal(); });
 /* ---------------- Checkout modal ---------------- */
 const modalBackdrop = document.getElementById('modalBackdrop');
 const modalContent = document.getElementById('modalContent');
+let successPollInterval = null;
 document.getElementById('closeModalBtn').addEventListener('click', closeModal);
 
 function openModal(){ modalBackdrop.classList.add('show'); }
-function closeModal(){ modalBackdrop.classList.remove('show'); }
+function closeModal(){
+  modalBackdrop.classList.remove('show');
+  if(successPollInterval){ clearInterval(successPollInterval); successPollInterval = null; }
+}
 
 checkoutBtn.addEventListener('click', ()=>{
   closeCart();
   renderCheckoutForm();
   openModal();
+});
+
+/* ---- Send order via WhatsApp — a lightweight alternate channel. It opens
+   the shop's WhatsApp chat with the cart pre-filled as a message; the
+   customer sends their name/address in chat, and the store confirms
+   directly there. NOTE: this bypasses the site's own order system, so it
+   won't appear in the admin dashboard or "My Orders" tracker — it's a
+   parallel path for customers who'd rather just message the shop. */
+const STORE_WHATSAPP_NUMBER = "918707397039";
+function buildWhatsAppOrderMessage(){
+  const {subtotal, delivery, total} = cartTotals();
+  const lines = Object.entries(cart).map(([id, qty])=>{
+    const p = findProduct(id);
+    return p ? `• ${p.name} (${p.unit}) x${qty} — ₹${p.price * qty}` : null;
+  }).filter(Boolean);
+  return [
+    "Hi Sanjeev Provision Store! I'd like to order:",
+    "",
+    ...lines,
+    "",
+    `Subtotal: ₹${subtotal}`,
+    `Delivery: ${delivery === 0 ? "Free" : "₹" + delivery}`,
+    `Total: ₹${total}`,
+    "",
+    "My name: ",
+    "My delivery address: "
+  ].join("\n");
+}
+whatsappOrderBtn.addEventListener('click', ()=>{
+  if(Object.keys(cart).length === 0) return;
+  const msg = buildWhatsAppOrderMessage();
+  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 });
 
 function renderCheckoutForm(){
@@ -360,6 +439,7 @@ function renderCardProcessing(){
 }
 
 /* ---------------- Success + live tracker ---------------- */
+
 function renderSuccessAndTrack(name){
   const total = pendingOrder ? pendingOrder.total : cartTotals().total;
   const orderId = pendingOrder ? pendingOrder.orderId : ("SP" + Math.floor(1000 + Math.random()*9000));
@@ -377,31 +457,19 @@ function renderSuccessAndTrack(name){
       placedAt: new Date().toISOString()
     });
     saveOrders();
+    seenStatus[pendingOrder.orderId] = "Confirmed";
+    saveSeenStatus();
   }
 
   modalContent.innerHTML = `
     <div class="center-state">
       <div class="stamp success-stamp">✓</div>
-      <h3>Payment successful!</h3>
+      <h3>Order placed!</h3>
       <p class="muted">Thanks ${name.split(' ')[0]}, order <b style="color:var(--ink)">#${orderId}</b> (₹${total}) has been placed.</p>
     </div>
 
-    <div class="tracker">
-      <div class="steps" id="steps">
-        <div class="fill" id="stepsFill"></div>
-        <div class="step done" data-step="0"><div class="dot">✓</div><span>Order Confirmed</span></div>
-        <div class="step" data-step="1"><div class="dot">📦</div><span>Packed</span></div>
-        <div class="step" data-step="2"><div class="dot">🛵</div><span>Out for Delivery</span></div>
-        <div class="step" data-step="3"><div class="dot">🏠</div><span>Delivered</span></div>
-      </div>
-
-      <div class="route">
-        <div class="scooter" id="scooter">🏬</div>
-        <div class="route-label" id="routeLabel">Sitting pretty at the store</div>
-      </div>
-
-      <p class="track-msg" id="trackMsg">Your order is confirmed and headed to packing.</p>
-    </div>
+    <div id="liveTrackerWrap">${renderFullTracker("Confirmed")}</div>
+    <p class="upload-note">The store updates this status as your order moves along — it'll refresh here on its own, and you can check it anytime from "My Orders".</p>
 
     <button class="continue-btn" id="continueBtn">Continue Shopping</button>
   `;
@@ -414,63 +482,492 @@ function renderSuccessAndTrack(name){
     closeModal();
   });
 
-  runTrackerSequence();
+  // Reflect the ACTUAL status set by the store owner in the admin dashboard —
+  // never advanced automatically on a timer.
+  if(successPollInterval) clearInterval(successPollInterval);
+  successPollInterval = setInterval(()=>{
+    const fresh = loadOrders().find(o => o.orderId === orderId);
+    const wrap = document.getElementById('liveTrackerWrap');
+    if(!fresh || !wrap) return;
+    wrap.innerHTML = renderFullTracker(fresh.status);
+    if(fresh.status === "Delivered"){
+      clearInterval(successPollInterval);
+      successPollInterval = null;
+    }
+  }, 4000);
 }
 
-function setStep(idx, fillPct){
-  document.querySelectorAll('.step').forEach(s=>{
-    const stepIdx = +s.dataset.step;
-    s.classList.remove('active','done');
-    if(stepIdx < idx) s.classList.add('done');
-    else if(stepIdx === idx) s.classList.add('active');
-  });
-  const dotsForDone = document.querySelectorAll('.step.done .dot');
-  dotsForDone.forEach(d=> d.textContent = "✓");
-  document.getElementById('stepsFill').style.width = fillPct + "%";
-}
+/* ================= List photo upload (customer) =================
+   Lets a customer photograph a handwritten/typed shopping list and send
+   it straight through, instead of picking items one by one. Like orders,
+   this is saved in this browser's localStorage — the admin will see it
+   when they open the dashboard on the SAME device/browser it was sent
+   from (a real cross-device inbox would need a small backend). Images
+   are resized/compressed in the browser first so they don't blow past
+   localStorage's limit. */
+const listModalBackdrop = document.getElementById('listModalBackdrop');
+const listModalContent = document.getElementById('listModalContent');
+document.getElementById('openListUploadBtn').addEventListener('click', ()=>{
+  renderListUploadForm();
+  listModalBackdrop.classList.add('show');
+});
+document.getElementById('listModalClose').addEventListener('click', closeListModal);
+listModalBackdrop.addEventListener('click', e=>{ if(e.target === listModalBackdrop) closeListModal(); });
+function closeListModal(){ listModalBackdrop.classList.remove('show'); }
 
-function runTrackerSequence(){
-  const msg = document.getElementById('trackMsg');
-  const scooter = document.getElementById('scooter');
-  const routeLabel = document.getElementById('routeLabel');
+let pendingListImage = null; // compressed base64 data URL
 
-  setStep(0, 0);
+function renderListUploadForm(){
+  pendingListImage = null;
+  listModalContent.innerHTML = `
+    <h3>Send us your list</h3>
+    <p class="muted">Snap a photo of your shopping list (handwritten is fine) and we'll get it ready for you.</p>
 
-  // Stage 1: Packed
-  setTimeout(()=>{
-    setStep(1, 33);
-    msg.innerHTML = "We're weighing and packing your items right now.";
-    routeLabel.textContent = "Being packed at the counter";
-  }, 2200);
+    <div class="field">
+      <label>Photo of your list</label>
+      <label class="upload-drop" id="uploadDropZone">
+        <div class="u-icon">📷</div>
+        <div class="u-text">Tap to take a photo or choose from gallery</div>
+        <div class="u-sub">JPG or PNG, one photo per list</div>
+        <input type="file" id="listImageInput" accept="image/*" capture="environment">
+      </label>
+      <div id="uploadPreviewWrap"></div>
+    </div>
 
-  // Stage 2: Out for delivery — scooter animates across the route
-  setTimeout(()=>{
-    setStep(2, 66);
-    msg.innerHTML = "Your order has left the store — <b>out for delivery</b>.";
-    routeLabel.textContent = "On the way to you";
-    scooter.textContent = "🛵";
-    scooter.style.left = "0%";
-    requestAnimationFrame(()=>{
-      setTimeout(()=>{ scooter.style.left = "88%"; }, 50);
+    <div class="field">
+      <label>Full name</label>
+      <input type="text" id="listName" placeholder="e.g. Priya Shah">
+    </div>
+    <div class="field">
+      <label>Phone number</label>
+      <input type="tel" id="listPhone" placeholder="e.g. 98765 43210">
+    </div>
+    <div class="field">
+      <label>Note (optional)</label>
+      <textarea id="listNote" rows="2" placeholder="Anything else we should know — delivery time, substitutions, etc."></textarea>
+    </div>
+
+    <button class="checkout-btn" id="sendListBtn">Send List to Store</button>
+    <p class="upload-note">We'll review your photo and confirm the order with you by phone before packing it.</p>
+  `;
+
+  const fileInput = document.getElementById('listImageInput');
+  fileInput.addEventListener('change', e=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    compressImage(file, 1280, 0.72).then(dataUrl=>{
+      pendingListImage = dataUrl;
+      renderUploadPreview();
+    }).catch(()=>{
+      alert("Sorry, that photo couldn't be read. Please try another one.");
     });
-  }, 4600);
+  });
 
-  // Stage 3: Delivered
-  setTimeout(()=>{
-    setStep(3, 100);
-    msg.innerHTML = "<b>Delivered!</b> Your groceries are at your doorstep. Enjoy 🎉";
-    routeLabel.textContent = "Arrived at your doorstep";
-    scooter.textContent = "🏠";
-  }, 9200);
+  document.getElementById('sendListBtn').addEventListener('click', submitListUpload);
+}
+
+function renderUploadPreview(){
+  const wrap = document.getElementById('uploadPreviewWrap');
+  if(!pendingListImage){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <div class="upload-preview">
+      <img src="${pendingListImage}" alt="Your list photo">
+      <button class="u-remove" id="removeUploadBtn" type="button" aria-label="Remove photo">✕</button>
+    </div>`;
+  document.getElementById('removeUploadBtn').addEventListener('click', ()=>{
+    pendingListImage = null;
+    document.getElementById('listImageInput').value = '';
+    renderUploadPreview();
+  });
+}
+
+/* Resize + re-encode the photo client-side so a phone photo (often several
+   MB) doesn't fill up localStorage. Keeps things well under the ~5MB
+   per-origin limit even after a few uploads. */
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = ()=>{
+        let {width, height} = img;
+        if(width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function submitListUpload(){
+  const name = document.getElementById('listName').value.trim();
+  const phone = document.getElementById('listPhone').value.trim();
+  const note = document.getElementById('listNote').value.trim();
+
+  if(!pendingListImage){ alert("Please add a photo of your list first."); return; }
+  if(!name || !phone){ alert("Please enter your name and phone number."); return; }
+
+  listUploads.unshift({
+    id: "L" + Date.now().toString().slice(-8),
+    name, phone, note,
+    image: pendingListImage,
+    status: "New",
+    uploadedAt: new Date().toISOString()
+  });
+
+  const ok = saveListUploads();
+  if(!ok){
+    listUploads.shift(); // roll back — storage was full
+    alert("Sorry, that photo was too large to send. Please try a smaller or less detailed photo.");
+    return;
+  }
+
+  listModalContent.innerHTML = `
+    <div class="center-state">
+      <div class="stamp success-stamp">✓</div>
+      <h3>List sent!</h3>
+      <p class="muted">Thanks ${escapeHtml(name.split(' ')[0])}, we've received your list photo. We'll call you at ${escapeHtml(phone)} shortly to confirm your order.</p>
+    </div>
+    <button class="continue-btn" id="closeListSuccessBtn">Done</button>
+  `;
+  document.getElementById('closeListSuccessBtn').addEventListener('click', closeListModal);
+}
+
+/* ---- Admin: viewing list uploads ---- */
+const adminListUploads = document.getElementById('adminListUploads');
+const LIST_STATUSES = ["New", "Reviewed", "Order placed"];
+
+function renderAdminListUploads(){
+  if(!listUploads.length){
+    adminListUploads.innerHTML = `<div class="admin-empty"><div class="stamp">📷</div><p>No list photos yet.<br>Photos customers send in will appear here.</p></div>`;
+    return;
+  }
+  adminListUploads.innerHTML = listUploads.map((u, idx)=>`
+    <div class="lu-card">
+      <img class="lu-thumb" src="${u.image}" data-view="${idx}" alt="List photo from ${escapeHtml(u.name)}">
+      <div class="lu-info">
+        <h4>${escapeHtml(u.name)}</h4>
+        <div class="cust">📞 ${escapeHtml(u.phone)}</div>
+        ${u.note ? `<div class="note">"${escapeHtml(u.note)}"</div>` : ''}
+      </div>
+      <div class="lu-meta">
+        <span class="lu-date">${fmtDate(u.uploadedAt)}</span>
+        <select class="status-select" data-lustatus="${idx}">
+          ${LIST_STATUSES.map(s=>`<option value="${s}" ${s === u.status ? 'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="mini-btn danger" data-deluplist="${idx}">Delete</button>
+      </div>
+    </div>`).join('');
+
+  adminListUploads.querySelectorAll('[data-view]').forEach(img=>img.addEventListener('click', ()=>{
+    window.open(listUploads[+img.dataset.view].image, '_blank');
+  }));
+  adminListUploads.querySelectorAll('[data-lustatus]').forEach(sel=>sel.addEventListener('change', ()=>{
+    listUploads[+sel.dataset.lustatus].status = sel.value;
+    saveListUploads();
+  }));
+  adminListUploads.querySelectorAll('[data-deluplist]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm("Delete this list photo?")) return;
+    listUploads.splice(+b.dataset.deluplist, 1);
+    saveListUploads();
+    renderAdminListUploads();
+  }));
 }
 
 /* ---------------- Order snapshot helper ---------------- */
 function snapshotItems(){
   return Object.entries(cart).map(([id, qty])=>{
     const p = findProduct(id);
-    return p ? {name:p.name, unit:p.unit, price:p.price, qty} : null;
+    return p ? {id:p.id, name:p.name, unit:p.unit, price:p.price, qty} : null;
   }).filter(Boolean);
 }
+
+/* ================= My Orders + status notifications (customer) =================
+   A customer's own order history lives in THIS browser's localStorage (it's
+   populated the moment they check out here). If the store owner updates an
+   order's status from the SAME browser — e.g. a second tab, or a shared
+   shop device — that update is picked up below and the customer is notified,
+   including a real OS-level notification if they've allowed it. Checking
+   status from a different phone/device than the one used to order would
+   need a small backend to sync data between devices; this covers everything
+   possible without one. */
+
+const STATUS_STEP_ICONS = {0:"🏬", 1:"📦", 2:"🛵", 3:"🏠"};
+const STATUS_MESSAGES = {
+  "Confirmed": "Your order is confirmed and headed to packing.",
+  "Packed": "We're weighing and packing your items right now.",
+  "Out for delivery": "Your order has left the store — out for delivery.",
+  "Delivered": "Delivered! Your groceries are at your doorstep. Enjoy 🎉"
+};
+
+let unseenOrderUpdates = 0;
+const ordersNotifyDot = document.getElementById('ordersNotifyDot');
+
+function statusIndex(status){
+  const i = STATUSES.indexOf(status);
+  return i === -1 ? 0 : i;
+}
+
+function renderStatusPill(status){
+  const cls = status === "Out for delivery" ? "out" : status === "Delivered" ? "delivered" : status === "Cancelled" ? "cancelled" : "";
+  const icon = status === "Cancelled" ? "✕" : STATUS_STEP_ICONS[statusIndex(status)];
+  return `<span class="myord-status-pill ${cls}">${icon} ${escapeHtml(status)}</span>`;
+}
+
+function renderMiniTracker(status){
+  if(status === "Cancelled"){
+    return `<div class="cancelled-block"><span class="c-icon">✕</span><p>This order was cancelled and will not be delivered.</p></div>`;
+  }
+  const idx = statusIndex(status);
+  const fillPct = [0, 33, 66, 100][idx];
+  return `
+    <div class="tracker">
+      <div class="steps">
+        <div class="fill" style="width:${fillPct}%"></div>
+        ${STATUSES.map((s,i)=>`
+          <div class="step ${i < idx ? 'done' : i === idx ? 'active' : ''}">
+            <div class="dot">${i < idx ? '✓' : STATUS_STEP_ICONS[i]}</div>
+            <span>${s}</span>
+          </div>`).join('')}
+      </div>
+      <p class="track-msg">${STATUS_MESSAGES[status] || ''}</p>
+    </div>`;
+}
+
+const ROUTE_META = [
+  {pct:0,  icon:"🏬", label:"Sitting pretty at the store"},
+  {pct:12, icon:"📦", label:"Being packed at the counter"},
+  {pct:88, icon:"🛵", label:"On the way to you"},
+  {pct:100,icon:"🏠", label:"Arrived at your doorstep"}
+];
+
+/* Full tracker with the steps bar + route visual, always drawn from the
+   order's REAL status (as set by the store owner in the admin dashboard) —
+   never advanced automatically on a timer. Used on the checkout success
+   screen, where it polls for the store's actual updates. */
+function renderFullTracker(status){
+  if(status === "Cancelled"){
+    return `<div class="cancelled-block"><span class="c-icon">✕</span><p>This order was cancelled and will not be delivered.</p></div>`;
+  }
+  const idx = statusIndex(status);
+  const fillPct = [0, 33, 66, 100][idx];
+  const route = ROUTE_META[idx];
+  return `
+    <div class="tracker">
+      <div class="steps">
+        <div class="fill" style="width:${fillPct}%"></div>
+        ${STATUSES.map((s,i)=>`
+          <div class="step ${i < idx ? 'done' : i === idx ? 'active' : ''}">
+            <div class="dot">${i < idx ? '✓' : STATUS_STEP_ICONS[i]}</div>
+            <span>${s}</span>
+          </div>`).join('')}
+      </div>
+      <div class="route">
+        <div class="scooter" style="left:${route.pct}%;">${route.icon}</div>
+        <div class="route-label">${route.label}</div>
+      </div>
+      <p class="track-msg">${STATUS_MESSAGES[status] || ''}</p>
+    </div>`;
+}
+
+const myOrdersModalBackdrop = document.getElementById('myOrdersModalBackdrop');
+const myOrdersModalContent = document.getElementById('myOrdersModalContent');
+document.getElementById('openMyOrdersBtn').addEventListener('click', ()=>{
+  unseenOrderUpdates = 0;
+  updateNotifyDot();
+  renderMyOrders();
+  myOrdersModalBackdrop.classList.add('show');
+});
+document.getElementById('myOrdersModalClose').addEventListener('click', ()=>myOrdersModalBackdrop.classList.remove('show'));
+myOrdersModalBackdrop.addEventListener('click', e=>{ if(e.target === myOrdersModalBackdrop) myOrdersModalBackdrop.classList.remove('show'); });
+
+function updateNotifyDot(){
+  ordersNotifyDot.style.display = unseenOrderUpdates > 0 ? '' : 'none';
+}
+
+function renderMyOrders(){
+  orders = loadOrders(); // pick up any change made in another tab/device on this browser
+  const notifyOn = localStorage.getItem(LS_NOTIFY_PREF) === 'granted' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+  const notifyBlock = (typeof Notification === 'undefined') ? '' : `
+    <div class="notify-toggle">
+      <div>
+        <div class="nt-label">🔔 Order notifications</div>
+        <div class="nt-sub">${notifyOn ? "You'll be notified when your order status changes." : "Get notified the moment your order is out for delivery."}</div>
+      </div>
+      <button id="notifyToggleBtn" class="${notifyOn ? 'on' : ''}">${notifyOn ? 'Enabled ✓' : 'Enable'}</button>
+    </div>`;
+
+  if(!orders.length){
+    myOrdersModalContent.innerHTML = `
+      <h3>My Orders</h3>
+      <p class="muted">Orders you place from this device will show up here.</p>
+      ${notifyBlock}
+      <div class="admin-empty"><div class="stamp">📦</div><p>No orders yet.<br>Once you check out, you'll be able to track it right here.</p></div>
+    `;
+  }else{
+    myOrdersModalContent.innerHTML = `
+      <h3>My Orders</h3>
+      <p class="muted">Track the status of orders placed from this device.</p>
+      ${notifyBlock}
+      ${orders.map((o, idx)=>`
+        <div class="myord-card">
+          <div class="myord-top">
+            <h4>Order <span class="oid">#${escapeHtml(o.orderId)}</span></h4>
+            ${renderStatusPill(o.status)}
+          </div>
+          <div class="myord-date">${fmtDate(o.placedAt)}</div>
+          ${renderMiniTracker(o.status)}
+          <div class="myord-total">${o.items ? o.items.length : 0} item(s) · Total <b>₹${o.total}</b></div>
+          <div class="myord-actions">
+            <button class="mini-btn" data-reorder="${idx}">↻ Reorder</button>
+            ${o.status === "Confirmed" ? `<button class="mini-btn danger" data-cancelorder="${idx}">Cancel order</button>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    `;
+  }
+
+  myOrdersModalContent.querySelectorAll('[data-reorder]').forEach(b=>b.addEventListener('click', ()=>{
+    reorderItems(orders[+b.dataset.reorder]);
+  }));
+  myOrdersModalContent.querySelectorAll('[data-cancelorder]').forEach(b=>b.addEventListener('click', ()=>{
+    cancelOrder(orders[+b.dataset.cancelorder].orderId);
+  }));
+
+  if(typeof Notification !== 'undefined'){
+    const btn = document.getElementById('notifyToggleBtn');
+    if(btn) btn.addEventListener('click', ()=>{
+      if(Notification.permission === 'granted'){
+        localStorage.setItem(LS_NOTIFY_PREF, 'granted');
+        renderMyOrders();
+        return;
+      }
+      Notification.requestPermission().then(perm=>{
+        localStorage.setItem(LS_NOTIFY_PREF, perm === 'granted' ? 'granted' : 'denied');
+        renderMyOrders();
+      });
+    });
+  }
+}
+
+/* ---- Reorder: refill the cart from a past order's items ---- */
+function reorderItems(order){
+  if(!order || !order.items || !order.items.length){
+    alert("Sorry, this order doesn't have item details saved to reorder.");
+    return;
+  }
+  let added = 0, skipped = 0;
+  order.items.forEach(it=>{
+    if(it.id === undefined || it.id === null){ skipped++; return; }
+    const p = findProduct(it.id);
+    if(!p || p.available === false){ skipped++; return; }
+    cart[p.id] = (cart[p.id] || 0) + it.qty;
+    added++;
+  });
+  renderGrid();
+  renderCart();
+  myOrdersModalBackdrop.classList.remove('show');
+
+  if(added === 0){
+    showToast('⚠️', "Couldn't reorder", "None of those items are available right now.");
+    return;
+  }
+  showToast('🧺', "Added to your basket",
+    skipped ? `${added} item(s) added — ${skipped} item(s) are no longer available.` : `${added} item(s) added to your basket.`);
+  openCart();
+}
+
+/* ---- Cancel: customer can cancel only while status is still "Confirmed" ---- */
+function cancelOrder(orderId){
+  if(!confirm("Cancel this order? This can't be undone.")) return;
+  orders = loadOrders();
+  const o = orders.find(x => x.orderId === orderId);
+  if(!o) return;
+  if(o.status !== "Confirmed"){
+    alert("This order is already being prepared and can no longer be cancelled from here. Please call the store.");
+    renderMyOrders();
+    return;
+  }
+  o.status = "Cancelled";
+  saveOrders();
+  seenStatus[orderId] = "Cancelled"; // don't re-notify the customer about their own cancellation
+  saveSeenStatus();
+  renderMyOrders();
+}
+
+/* ---- Toast (in-page) ---- */
+const toastStack = document.getElementById('toastStack');
+function showToast(icon, title, body, variant){
+  const el = document.createElement('div');
+  el.className = 'toast' + (variant ? ' ' + variant : '');
+  el.innerHTML = `<div class="t-icon">${icon}</div><div class="t-text"><b>${escapeHtml(title)}</b><span>${escapeHtml(body)}</span></div>`;
+  el.addEventListener('click', ()=>{
+    el.remove();
+    unseenOrderUpdates = 0;
+    updateNotifyDot();
+    renderMyOrders();
+    myOrdersModalBackdrop.classList.add('show');
+  });
+  toastStack.appendChild(el);
+  setTimeout(()=>{ el.remove(); }, 7000);
+}
+
+/* ---- Poll for status changes made elsewhere on this browser ---- */
+function checkForStatusUpdates(){
+  const fresh = loadOrders();
+  let changed = false;
+  fresh.forEach(o=>{
+    const last = seenStatus[o.orderId];
+    if(last === undefined){
+      // an order we haven't tracked yet (e.g. seeded before this feature existed)
+      seenStatus[o.orderId] = o.status;
+      changed = true;
+      return;
+    }
+    if(last !== o.status){
+      seenStatus[o.orderId] = o.status;
+      changed = true;
+      unseenOrderUpdates++;
+      updateNotifyDot();
+
+      const isOut = o.status === "Out for delivery";
+      const isCancelled = o.status === "Cancelled";
+      const icon = isCancelled ? "✕" : STATUS_STEP_ICONS[statusIndex(o.status)];
+      const title = isOut ? "Your order is out for delivery! 🛵"
+        : isCancelled ? `Order #${o.orderId} was cancelled`
+        : `Order #${o.orderId}: ${o.status}`;
+      const body = isCancelled ? "The store has cancelled this order." : (STATUS_MESSAGES[o.status] || `Status updated to "${o.status}".`);
+      showToast(icon, title, body, isOut ? 'out' : '');
+
+      if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+        try{
+          new Notification(title, {body, icon: undefined, tag: 'sp-order-' + o.orderId});
+        }catch(e){}
+      }
+
+      if(myOrdersModalBackdrop.classList.contains('show')) renderMyOrders();
+    }
+  });
+  orders = fresh;
+  if(changed) saveSeenStatus();
+}
+
+setInterval(checkForStatusUpdates, 4000);
+window.addEventListener('storage', e=>{
+  if(e.key === LS_ORDERS) checkForStatusUpdates();
+});
 
 /* ================= Opening portal ================= */
 const portal = document.getElementById('portal');
@@ -502,6 +999,7 @@ function enterAdmin(){
   window.scrollTo(0, 0);
   renderAdminProducts();
   renderAdminOrders();
+  renderAdminListUploads();
 }
 
 document.getElementById('enterCustomer').addEventListener('click', enterStore);
@@ -538,6 +1036,7 @@ document.querySelectorAll('.admin-tab').forEach(tab=>{
     const which = tab.dataset.tab;
     document.getElementById('panel-products').classList.toggle('active', which === 'products');
     document.getElementById('panel-orders').classList.toggle('active', which === 'orders');
+    document.getElementById('panel-lists').classList.toggle('active', which === 'lists');
   });
 });
 
@@ -650,6 +1149,7 @@ function openProductForm(id){
 const adminOrderList = document.getElementById('adminOrderList');
 const orderStats = document.getElementById('orderStats');
 const STATUSES = ["Confirmed", "Packed", "Out for delivery", "Delivered"];
+const ADMIN_STATUSES = [...STATUSES, "Cancelled"];
 
 function fmtDate(iso){
   if(!iso) return "";
@@ -659,10 +1159,13 @@ function fmtDate(iso){
 }
 
 function renderAdminOrders(){
-  const revenue = orders.reduce((s,o)=> s + (o.total || 0), 0);
+  const activeOrders = orders.filter(o => o.status !== "Cancelled");
+  const cancelledCount = orders.length - activeOrders.length;
+  const revenue = activeOrders.reduce((s,o)=> s + (o.total || 0), 0);
   orderStats.innerHTML = `
     <div class="stat-card"><div class="n">${orders.length}</div><div class="l">Total orders</div></div>
     <div class="stat-card"><div class="n">₹${revenue}</div><div class="l">Total value</div></div>
+    <div class="stat-card"><div class="n">${cancelledCount}</div><div class="l">Cancelled</div></div>
   `;
   if(!orders.length){
     adminOrderList.innerHTML = `<div class="admin-empty"><div class="stamp">📦</div><p>No orders yet.<br>Orders placed by customers on this device will appear here.</p></div>`;
@@ -689,7 +1192,7 @@ function renderAdminOrders(){
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <select class="status-select" data-status="${idx}">
-            ${STATUSES.map(s=>`<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
+            ${ADMIN_STATUSES.map(s=>`<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
           <button class="mini-btn danger" data-delorder="${idx}">Delete</button>
         </div>
@@ -713,3 +1216,4 @@ document.body.classList.add('portal-open');
 renderChips();
 renderGrid();
 renderCart();
+checkForStatusUpdates();

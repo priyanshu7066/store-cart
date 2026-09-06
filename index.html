@@ -64,6 +64,8 @@
       <a href="#contact">Contact</a>
     </nav>
     <div class="nav-right">
+      <button class="list-upload-btn" id="openMyOrdersBtn">📦 <span class="lu-text">My Orders</span><span class="notify-dot" id="ordersNotifyDot" style="display:none;"></span></button>
+      <button class="list-upload-btn" id="openListUploadBtn">📷 <span class="lu-text">Send List Photo</span></button>
       <button class="cart-btn" id="openCartBtn" aria-label="Open cart">
         🧺 Cart
         <span class="cart-count" id="cartCount">0</span>
@@ -120,6 +122,10 @@
         </div>
       </div>
 
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="productSearch" placeholder="Search for rice, dal, oil, masala…">
+      </div>
       <div class="chips" id="chips"></div>
       <div class="grid" id="productGrid"></div>
     </div>
@@ -181,6 +187,7 @@
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="products">🛒 Products</button>
       <button class="admin-tab" data-tab="orders">📦 Orders</button>
+      <button class="admin-tab" data-tab="lists">📷 List Uploads</button>
     </div>
 
     <div class="admin-panel active" id="panel-products">
@@ -198,6 +205,13 @@
       <div class="admin-stats" id="orderStats"></div>
       <div id="adminOrderList"></div>
     </div>
+
+    <div class="admin-panel" id="panel-lists">
+      <div class="admin-panel-head">
+        <h2>Customer List Uploads</h2>
+      </div>
+      <div id="adminListUploads"></div>
+    </div>
   </div>
 </div>
 
@@ -206,6 +220,22 @@
   <div class="modal">
     <button class="icon-btn modal-close" id="admModalClose" aria-label="Close">✕</button>
     <div id="admModalContent"></div>
+  </div>
+</div>
+
+<!-- My Orders Modal (customer) -->
+<div class="modal-backdrop" id="myOrdersModalBackdrop">
+  <div class="modal">
+    <button class="icon-btn modal-close" id="myOrdersModalClose" aria-label="Close">✕</button>
+    <div id="myOrdersModalContent"></div>
+  </div>
+</div>
+
+<!-- List Upload Modal (customer) -->
+<div class="modal-backdrop" id="listModalBackdrop">
+  <div class="modal">
+    <button class="icon-btn modal-close" id="listModalClose" aria-label="Close">✕</button>
+    <div id="listModalContent"></div>
   </div>
 </div>
 
@@ -222,6 +252,7 @@
     <div class="row-line"><span>Delivery</span><span id="deliveryVal">₹0</span></div>
     <div class="row-line total"><span>Total</span><b id="totalVal">₹0</b></div>
     <button class="checkout-btn" id="checkoutBtn" disabled>Proceed to Checkout</button>
+    <button class="whatsapp-btn" id="whatsappOrderBtn" disabled>💬 Send Order via WhatsApp</button>
   </div>
 </aside>
 
@@ -232,6 +263,8 @@
     <div id="modalContent"></div>
   </div>
 </div>
+
+<div class="toast-stack" id="toastStack"></div>
 
 <script src="script.js"></script>
 </body>
